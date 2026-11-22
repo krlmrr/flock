@@ -48,7 +48,7 @@ func newPHPCommand() *cobra.Command {
 	}
 	install.Flags().StringVar(&from, "from", "", "directory or archive containing the php and php-fpm binaries")
 
-	list := &cobra.Command{
+	list := supportsJSON(&cobra.Command{
 		Use:   "list",
 		Short: "List installed PHP versions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -60,6 +60,13 @@ func newPHPCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonOutput(cmd) {
+				installed := []phpVersionJSON{}
+				for _, v := range versions {
+					installed = append(installed, phpVersionJSON{Version: v, Default: v == s.cfg.DefaultPHP})
+				}
+				return writeJSON(cmd.OutOrStdout(), installed)
+			}
 			for _, v := range versions {
 				marker := " "
 				if v == s.cfg.DefaultPHP {
@@ -69,10 +76,15 @@ func newPHPCommand() *cobra.Command {
 			}
 			return nil
 		},
-	}
+	})
 
 	cmd.AddCommand(install, list)
 	return cmd
+}
+
+type phpVersionJSON struct {
+	Version string `json:"version"`
+	Default bool   `json:"default"`
 }
 
 // installPHPVersion installs the newest release of minor through the daemon, which downloads it
