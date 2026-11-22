@@ -14,7 +14,7 @@ This page lists the `flock` commands. The other pages show where to find each ac
 | --- | --- |
 | `flock install [--skip-privileged]` | Set Flock up: shims on PATH, background daemon, `.test` DNS and trusted HTTPS |
 | `flock uninstall [--purge]` | Remove Flock. Keeps site settings and databases unless `--purge` is given |
-| `flock status` | Show the state of the daemon and its services |
+| `flock status [--json]` | Show the state of the daemon and its services |
 | `flock restart` | Restart the daemon and all services |
 | `flock logs [name] [-n 50] [-f]` | Show service logs (daemon, web, php8.5-fpm on macOS and Linux or php8.5-cgi on Windows, postgres, …), or of what Flock runs for a site or proxy by its name (its FrankenPHP, dev server or command). Without a name, lists the logs |
 | `flock update` | Update Flock, CLI and daemon included: the app installs the new version (on Linux, apt or dnf) |
@@ -28,7 +28,7 @@ This page lists the `flock` commands. The other pages show where to find each ac
 | `flock unpark [dir]` | Stop serving a parked directory (alias: `forget`) |
 | `flock link [name] [--php 8.4] [--secure]` | Serve the current directory as `<name>.test` |
 | `flock unlink [name]` | Remove a linked site |
-| `flock sites` | List linked and parked sites, and proxies |
+| `flock sites [--json]` | List linked and parked sites, and proxies |
 | `flock type <php\|node> [site]` | Serve a site as a PHP site or as a Node.js app, whose dev server Flock runs |
 | `flock proxy <name> <port\|host:port\|url> [--secure] [--command <cmd>] [--dir <dir>] [--stop-command <cmd>]` | Proxy `<name>.test` to a local service, e.g. a dashboard or a Docker container; with `--command`, Flock can start and stop its server |
 | `flock unproxy <name>` | Stop serving a proxy |
@@ -54,7 +54,7 @@ This page lists the `flock` commands. The other pages show where to find each ac
 | Command | Description |
 | --- | --- |
 | `flock php install <version>` | Install a PHP version, e.g. `8.5` (`--from <file>` for a local build) |
-| `flock php list` | List installed PHP versions |
+| `flock php list [--json]` | List installed PHP versions |
 | `flock use <version>` | Set the default PHP version |
 | `flock node install <version>` | Install the newest release of a Node.js major, e.g. `22` |
 | `flock node list` | List installed Node.js versions |
@@ -82,7 +82,7 @@ This page lists the `flock` commands. The other pages show where to find each ac
 
 | Command | Description |
 | --- | --- |
-| `flock services [--json]` | List services and their state; `--json` for scripts: each with its port, whether it runs, and the `.env` settings to connect to it |
+| `flock services [--json]` | List services and their state; with `--json`, each with its port, whether it runs, and the `.env` settings to connect to it |
 | `flock services install <service> [version] [--port N]` | Install PostgreSQL, MySQL, MariaDB, MongoDB, Valkey, Redis (macOS), Meilisearch, Typesense (macOS and Linux) or RustFS. `--port` doesn't apply to PostgreSQL |
 | `flock services uninstall <service> [version] [--delete-data]` | Remove a version of a service (the active one unless given) |
 | `flock services use <service> <version>` | Switch a service to another installed version |
@@ -115,6 +115,43 @@ This page lists the `flock` commands. The other pages show where to find each ac
 | `flock mcp status` | Show which AI clients Flock is registered with |
 | `flock mcp [--site <site>]` | Run the MCP server (your AI clients start it themselves) |
 | `flock boost` | Add Flock's guideline to the current project's Laravel Boost guidelines |
+
+## JSON output
+
+For scripts and integrations, such as a menu bar widget, `--json` prints a command's output as JSON instead of text. It works on `flock status`, `flock sites`, `flock php list` and `flock services`. Any other command, such as `flock logs` or `flock daemon`, fails with an error rather than ignoring `--json`.
+
+The keys are snake_case and keep their types: a value that isn't set is `null` rather than missing, and an empty list is `[]`.
+
+`flock status --json` works when the daemon isn't running too: `daemon.running` is `false`, `services` is empty, and the settings come from `config.json`.
+
+```json
+{
+  "daemon": {"running": true, "version": "1.4.0", "pid": 4242, "started_at": "2026-11-22T09:30:00Z"},
+  "default_php": "8.4",
+  "xdebug": true,
+  "dumps": false,
+  "services": [
+    {"id": "postgres", "name": "PostgreSQL", "version": "17", "port": 5432, "enabled": true, "running": true, "stoppable": true, "problem": null}
+  ]
+}
+```
+
+`flock sites --json` lists each site. `php` is `null` for a Node.js app, and `problem` appears only when Flock can't serve the site.
+
+```json
+[
+  {"name": "acme", "url": "https://acme.test", "path": "/Users/you/Code/acme", "type": "php", "php": "8.4", "secure": true, "parked": false}
+]
+```
+
+`flock php list --json` lists the installed versions, newest first:
+
+```json
+[
+  {"version": "8.4", "default": true},
+  {"version": "8.3", "default": false}
+]
+```
 
 ## Shims
 
