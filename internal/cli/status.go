@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -17,13 +18,16 @@ import (
 )
 
 func newStatusCommand() *cobra.Command {
-	return &cobra.Command{
+	return supportsJSON(&cobra.Command{
 		Use:   "status",
 		Short: "Show the state of the Flock daemon and its services",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := load()
 			if err != nil {
 				return err
+			}
+			if jsonOutput(cmd) {
+				return printStatusJSON(cmd, s)
 			}
 
 			st, err := s.client().Status(cmd.Context())
@@ -97,7 +101,81 @@ func newStatusCommand() *cobra.Command {
 
 			return nil
 		},
+	})
+}
+
+type statusJSON struct {
+	Daemon     daemonJSON    `json:"daemon"`
+	DefaultPHP *string       `json:"default_php"`
+	Xdebug     bool          `json:"xdebug"`
+	Dumps      bool          `json:"dumps"`
+	Services   []serviceJSON `json:"services"`
+}
+
+type daemonJSON struct {
+	Running   bool       `json:"running"`
+	Version   *string    `json:"version"`
+	PID       *int       `json:"pid"`
+	StartedAt *time.Time `json:"started_at"`
+}
+
+type serviceJSON struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Version   *string `json:"version"`
+	Port      *int    `json:"port"`
+	Enabled   bool    `json:"enabled"`
+	Running   bool    `json:"running"`
+	Stoppable bool    `json:"stoppable"`
+	Problem   *string `json:"problem"`
+}
+
+func printStatusJSON(cmd *cobra.Command, s *state) error {
+	out := statusJSON{
+		DefaultPHP: nonEmpty(s.cfg.DefaultPHP),
+		Xdebug:     s.cfg.Xdebug,
+		Dumps:      s.cfg.Dumps,
+		Services:   []serviceJSON{},
 	}
+
+	client := s.client()
+	st, err := client.Status(cmd.Context())
+	if errors.Is(err, api.ErrDaemonNotRunning) {
+		return writeJSON(cmd.OutOrStdout(), out)
+	}
+	if err != nil {
+		return err
+	}
+	services, err := client.Services(cmd.Context())
+	if err != nil {
+		return err
+	}
+
+	out.Daemon = daemonJSON{Running: true, Version: &st.Version, PID: &st.PID, StartedAt: &st.StartedAt}
+	out.Xdebug, out.Dumps = st.Xdebug, st.Dumps
+	for _, svc := range services {
+		if svc.Installed {
+			out.Services = append(out.Services, serviceJSON{
+				ID: svc.ID, Name: svc.Name, Version: nonEmpty(svc.Version), Port: nonZero(svc.Port),
+				Enabled: svc.Enabled, Running: svc.Running, Stoppable: svc.Stoppable, Problem: nonEmpty(svc.Problem),
+			})
+		}
+	}
+	return writeJSON(cmd.OutOrStdout(), out)
+}
+
+func nonZero(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
+}
+
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func newSitesCommand() *cobra.Command {
