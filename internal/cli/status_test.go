@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -109,5 +110,96 @@ func TestStatusJSONListsTheInstalledServices(t *testing.T) {
 `
 	if out != want {
 		t.Errorf("got\n%s\nwant\n%s", out, want)
+	}
+}
+
+func TestSitesJSONFromTheDaemon(t *testing.T) {
+	root := flockHome(t, config.Default())
+	fakeDaemon(t, root, map[string]any{"/v1/status": api.Status{Sites: []api.SiteStatus{
+		{Name: "acme", Domain: "acme.test", Path: "/code/acme", PHP: "8.4", Secured: true, URL: "https://acme.test", Type: config.TypePHP},
+		{Name: "blog", Domain: "blog.test", Path: "/code/parked/blog", PHP: "8.3", Parked: true, Problem: "no index.php"},
+		{Name: "docs", Domain: "docs.test", Path: "/code/docs", Node: "22", URL: "http://docs.test", Type: config.TypeNode},
+	}}})
+
+	out, err := runFlock(t, "sites", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[
+  {
+    "name": "acme",
+    "url": "https://acme.test",
+    "path": "/code/acme",
+    "type": "php",
+    "php": "8.4",
+    "secure": true,
+    "parked": false
+  },
+  {
+    "name": "blog",
+    "url": "http://blog.test",
+    "path": "/code/parked/blog",
+    "type": "php",
+    "php": "8.3",
+    "secure": false,
+    "parked": true,
+    "problem": "no index.php"
+  },
+  {
+    "name": "docs",
+    "url": "http://docs.test",
+    "path": "/code/docs",
+    "type": "node",
+    "php": null,
+    "secure": false,
+    "parked": false
+  }
+]
+`
+	if out != want {
+		t.Errorf("got\n%s\nwant\n%s", out, want)
+	}
+}
+
+func TestSitesJSONFromTheConfigWhenTheDaemonIsNotRunning(t *testing.T) {
+	cfg := config.Default()
+	cfg.DefaultPHP = "8.4"
+	acme, docs := t.TempDir(), t.TempDir()
+	if err := cfg.Upsert(config.Site{Name: "acme", Path: acme, Secured: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Upsert(config.Site{Name: "docs", Path: docs, Type: config.TypeNode}); err != nil {
+		t.Fatal(err)
+	}
+	flockHome(t, cfg)
+
+	out, err := runFlock(t, "sites", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{
+		{"name": "acme", "url": "https://acme." + cfg.TLD, "path": acme, "type": "php", "php": "8.4", "secure": true, "parked": false},
+		{"name": "docs", "url": "http://docs." + cfg.TLD, "path": docs, "type": "node", "php": nil, "secure": false, "parked": false},
+	}
+	gotJSON, _ := json.Marshal(got)
+	wantJSON, _ := json.Marshal(want)
+	if string(gotJSON) != string(wantJSON) {
+		t.Errorf("got %s, want %s", gotJSON, wantJSON)
+	}
+}
+
+func TestSitesJSONIsAnEmptyArrayWithoutSites(t *testing.T) {
+	flockHome(t, config.Default())
+
+	out, err := runFlock(t, "sites", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "[]\n" {
+		t.Errorf("got %q, want %q", out, "[]\n")
 	}
 }

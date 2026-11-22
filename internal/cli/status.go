@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -179,13 +180,16 @@ func nonEmpty(s string) *string {
 }
 
 func newSitesCommand() *cobra.Command {
-	return &cobra.Command{
+	return supportsJSON(&cobra.Command{
 		Use:   "sites",
 		Short: "List linked and parked sites, and proxies",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			s, err := load()
 			if err != nil {
 				return err
+			}
+			if jsonOutput(cmd) {
+				return printSitesJSON(cmd, s)
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -232,7 +236,55 @@ func newSitesCommand() *cobra.Command {
 			printProxyRows(w, proxyRows(nil, s.cfg))
 			return w.Flush()
 		},
+	})
+}
+
+type siteJSON struct {
+	Name    string  `json:"name"`
+	URL     string  `json:"url"`
+	Path    string  `json:"path"`
+	Type    string  `json:"type"`
+	PHP     *string `json:"php"`
+	Secure  bool    `json:"secure"`
+	Parked  bool    `json:"parked"`
+	Problem string  `json:"problem,omitempty"`
+}
+
+func printSitesJSON(cmd *cobra.Command, s *state) error {
+	sites := []siteJSON{}
+	st, err := s.client().Status(cmd.Context())
+	if err == nil {
+		for _, site := range st.Sites {
+			kind := cmp.Or(site.Type, config.TypePHP)
+			sites = append(sites, siteJSON{
+				Name: site.Name, URL: cmp.Or(site.URL, siteURL(site.Secured, site.Domain)), Path: site.Path, Type: kind,
+				PHP: phpOfKind(kind, site.PHP), Secure: site.Secured, Parked: site.Parked, Problem: site.Problem,
+			})
+		}
+		return writeJSON(cmd.OutOrStdout(), sites)
 	}
+	for _, site := range s.cfg.AllSites() {
+		kind := site.Kind()
+		sites = append(sites, siteJSON{
+			Name: site.Name, URL: siteURL(site.Secured, s.cfg.Domain(site)), Path: site.Path, Type: kind,
+			PHP: phpOfKind(kind, s.cfg.PHPFor(site)), Secure: site.Secured, Parked: site.Parked,
+		})
+	}
+	return writeJSON(cmd.OutOrStdout(), sites)
+}
+
+func siteURL(secure bool, domain string) string {
+	if secure {
+		return "https://" + domain
+	}
+	return "http://" + domain
+}
+
+func phpOfKind(kind, version string) *string {
+	if kind == config.TypeNode {
+		return nil
+	}
+	return nonEmpty(version)
 }
 
 // printProxyRows adds the proxies to `flock sites`: "proxy" where a site has its PHP version, and the
