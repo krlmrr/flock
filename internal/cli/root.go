@@ -21,6 +21,8 @@ func NewRootCommand() *cobra.Command {
 
 	// cmd.Print* defaults to stderr in cobra; regular output belongs on stdout.
 	root.SetOut(os.Stdout)
+	root.PersistentFlags().Bool(jsonFlag, false, "print JSON for scripts, on the commands that support it")
+	root.PersistentPreRunE = requireJSONSupport
 
 	root.AddCommand(
 		newInstallCommand(), newConflictsCommand(), newUninstallCommand(), newPrivilegedSetupCommand(),

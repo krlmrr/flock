@@ -3,7 +3,6 @@ package cli
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,9 +22,7 @@ import (
 )
 
 func newServicesCommand() *cobra.Command {
-	var asJSON bool
-
-	cmd := &cobra.Command{
+	cmd := supportsJSON(&cobra.Command{
 		Use:   "services",
 		Short: "List, install, update and remove PostgreSQL, MySQL, MariaDB, MongoDB, Valkey, Redis (macOS and Linux), Meilisearch, Typesense and RustFS",
 		Long: `Lists the services and their versions. With --json, for scripts: every service with
@@ -38,14 +35,12 @@ Laravel app to it (env).`,
 				return err
 			}
 			client := s.client()
-			if asJSON {
+			if jsonOutput(cmd) {
 				services, err := client.Services(cmd.Context())
 				if err != nil {
 					return err
 				}
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(services)
+				return writeJSON(cmd.OutOrStdout(), services)
 			}
 			c, err := client.Catalog(cmd.Context())
 			if err != nil {
@@ -58,8 +53,7 @@ Laravel app to it (env).`,
 			printCatalog(cmd.OutOrStdout(), pg, c)
 			return nil
 		},
-	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print every service as JSON, for scripts")
+	})
 
 	var port int
 	var withExtensions bool
